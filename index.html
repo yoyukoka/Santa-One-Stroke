@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Santa One-Stroke Puzzle</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: 'Press Start 2P', "Noto Sans JP", "Hiragino Sans", system-ui, sans-serif;
+      padding: 24px;
+    }
+
+    main {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      width: min(92vw, 720px);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.5rem, 3vw, 2.25rem);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    p {
+      margin: 0;
+      text-align: center;
+      line-height: 1.5;
+      color: #cbd5f5;
+      font-size: clamp(0.9rem, 2.2vw, 1.05rem);
+    }
+
+    #game-wrapper {
+      position: relative;
+      width: min(92vw, 640px);
+      aspect-ratio: 1 / 1;
+    }
+
+    #game {
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 24px;
+      box-shadow: 0 0 25px rgba(15, 23, 42, 0.8) inset, 0 0 40px rgba(56, 189, 248, 0.15);
+    }
+
+    #clear-banner {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(2.5rem, 8vw, 4.5rem);
+      font-weight: 800;
+      letter-spacing: 0.24em;
+      color: #facc15;
+      text-shadow: 0 0 25px rgba(250, 204, 21, 0.8);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.35s ease;
+    }
+
+    #clear-banner.visible {
+      opacity: 1;
+    }
+
+    #status-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 12px 24px;
+      background: rgba(15, 23, 42, 0.75);
+      padding: 12px 18px;
+      border-radius: 999px;
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.35);
+    }
+
+    #status-bar span {
+      font-size: 0.95rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #e2e8f0;
+    }
+
+    #level-info {
+      font-weight: 700;
+      color: #facc15;
+    }
+
+    button {
+      appearance: none;
+      border: none;
+      border-radius: 999px;
+      padding: 10px 18px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, #38bdf8, #6366f1);
+      color: #f8fafc;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.2s ease;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 18px rgba(99, 102, 241, 0.25);
+    }
+
+    button:active {
+      transform: translateY(0px) scale(0.98);
+      box-shadow: none;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 520px) {
+      #status-bar {
+        width: 100%;
+        border-radius: 18px;
+      }
+
+      button {
+        width: 100%;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Santa One-Stroke</h1>
+    <p>プレゼントを配りながらすべての道を一筆書きで通過しよう。<br>離してしまうと最初からやり直しです。</p>
+    <div id="game-wrapper">
+      <canvas id="game"></canvas>
+      <div id="clear-banner">CLEAR</div>
+    </div>
+    <div id="status-bar">
+      <span id="level-info">LEVEL 1/3</span>
+      <span id="stage-name">STAGE</span>
+      <span id="progress">家をタップしてスタート</span>
+      <button id="next-button" type="button" class="hidden">Next Level</button>
+    </div>
+  </main>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const STAGE_DATA = `[
+        {
+          "name": "Triangle",
+          "startNode": 0,
+          "nodes": [
+            { "x": 0.5, "y": 0.18 },
+            { "x": 0.2, "y": 0.78 },
+            { "x": 0.8, "y": 0.78 }
+          ],
+          "edges": [
+            [0, 1],
+            [1, 2],
+            [2, 0]
+          ]
+        },
+        {
+          "name": "Star",
+          "startNode": 0,
+          "nodes": [
+            { "x": 0.5, "y": 0.08 },
+            { "x": 0.82, "y": 0.32 },
+            { "x": 0.68, "y": 0.86 },
+            { "x": 0.32, "y": 0.86 },
+            { "x": 0.18, "y": 0.32 }
+          ],
+          "edges": [
+            [0, 2],
+            [2, 4],
+            [4, 1],
+            [1, 3],
+            [3, 0]
+          ]
+        },
+        {
+          "name": "Christmas Tree",
+          "startNode": 0,
+          "nodes": [
+            { "x": 0.5, "y": 0.1 },
+            { "x": 0.8, "y": 0.35 },
+            { "x": 0.2, "y": 0.35 },
+            { "x": 0.6, "y": 0.35 },
+            { "x": 0.4, "y": 0.35 },
+            { "x": 0.9, "y": 0.6 },
+            { "x": 0.1, "y": 0.6 },
+            { "x": 0.6, "y": 0.6 },
+            { "x": 0.4, "y": 0.6 },
+            { "x": 0.6, "y": 0.85 },
+            { "x": 0.4, "y": 0.85 }
+          ],
+          "edges": [
+            [0, 1],
+            [0, 2],
+            [1, 3],
+            [2, 4],
+            [3, 5],
+            [4, 6],
+            [5, 7],
+            [6, 8],
+            [7, 8],
+            [7, 9],
+            [8, 10],
+            [9, 10]
+          ]
+        }
+      ]`;
+
+      const STAGES = JSON.parse(STAGE_DATA);
+
+      const canvas = document.getElementById('game');
+      const ctx = canvas.getContext('2d');
+      const clearBanner = document.getElementById('clear-banner');
+      const progressEl = document.getElementById('progress');
+      const stageNameEl = document.getElementById('stage-name');
+      const levelInfoEl = document.getElementById('level-info');
+      const nextButton = document.getElementById('next-button');
+
+      const state = {
+        stageIndex: 0,
+        stage: null,
+        adjacency: [],
+        visitedEdges: new Set(),
+        pointerActive: false,
+        pointerId: null,
+        started: false,
+        startNodeIndex: null,
+        currentNode: null,
+        pointerPos: { x: 0.5, y: 0.5 },
+        santaPos: { x: 0.5, y: 0.5 },
+        completed: false
+      };
+
+      const totalStages = STAGES.length;
+      const TAU = Math.PI * 2;
+      const SNOW_COUNT = 140;
+      const snowflakes = [];
+      const particles = [];
+      const SPARKLE_COLORS = ['#fcd34d', '#fde68a', '#fef3c7', '#fbbf24'];
+      const FIREWORK_COLORS = ['#f87171', '#facc15', '#38bdf8', '#a855f7'];
+
+      setupStage(0);
+      resizeCanvas();
+      initSnowflakes();
+      let lastTimestamp = performance.now();
+      requestAnimationFrame(render);
+
+      window.addEventListener('resize', () => {
+        resizeCanvas();
+        initSnowflakes();
+      });
+
+      canvas.addEventListener('pointerdown', handlePointerDown);
+      canvas.addEventListener('pointermove', handlePointerMove);
+      canvas.addEventListener('pointerup', handlePointerUp);
+      canvas.addEventListener('pointercancel', handlePointerUp);
+      canvas.addEventListener('pointerleave', handlePointerUp);
+      canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+      nextButton.addEventListener('click', handleNextLevel);
+
+      function setupStage(index) {
+        state.stageIndex = index;
+        state.stage = STAGES[index];
+        state.adjacency = state.stage.nodes.map(() => new Set());
+        state.stage.edges.forEach(([a, b]) => {
+          state.adjacency[a].add(b);
+          state.adjacency[b].add(a);
+        });
+        state.visitedEdges = new Set();
+        state.pointerActive = false;
+        state.pointerId = null;
+        state.started = false;
+        state.startNodeIndex = null;
+        state.currentNode = null;
+        state.pointerPos = { x: 0.5, y: 0.5 };
+        state.santaPos = { x: 0.5, y: 0.5 };
+        state.completed = false;
+        stageNameEl.textContent = state.stage.name;
+        levelInfoEl.textContent = `Level ${state.stageIndex + 1} / ${totalStages}`;
+        nextButton.classList.add('hidden');
+        nextButton.disabled = true;
+        nextButton.textContent = 'Next Level';
+        particles.length = 0;
+        clearBanner.classList.remove('visible');
+        updateStatus();
+      }
+
+      function resizeCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      function render(timestamp) {
+        const delta = Math.min((timestamp - lastTimestamp) / 1000 || 0, 0.05);
+        lastTimestamp = timestamp;
+        update(delta);
+        draw();
+        requestAnimationFrame(render);
+      }
+
+      function update(delta) {
+        updateSnowflakes(delta);
+        updateParticles(delta);
+      }
+
+      function draw() {
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, width, height);
+
+        const edgeWidth = getEdgeWidth();
+        const nodeRadius = getNodeRadius();
+
+        drawSnowflakes();
+        drawEdges(edgeWidth);
+        if (state.pointerActive && !state.completed) {
+          drawActivePath(edgeWidth * 0.7);
+        }
+        drawNodes(nodeRadius);
+        drawSanta(nodeRadius * 0.65);
+
+        if (state.completed) {
+          drawClearText();
+        }
+
+        drawParticles();
+      }
+
+      function drawEdges(lineWidth) {
+        ctx.save();
+        ctx.lineCap = 'round';
+        state.stage.edges.forEach(([aIndex, bIndex]) => {
+          const a = toCanvas(state.stage.nodes[aIndex]);
+          const b = toCanvas(state.stage.nodes[bIndex]);
+          const visited = state.visitedEdges.has(edgeKey(aIndex, bIndex));
+          ctx.strokeStyle = visited ? '#facc15' : '#475569';
+          ctx.globalAlpha = visited ? 0.95 : 0.65;
+          ctx.lineWidth = lineWidth;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        });
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
+
+      function drawActivePath(lineWidth) {
+        if (!state.started || state.currentNode === null) {
+          return;
+        }
+        const from = toCanvas(state.stage.nodes[state.currentNode]);
+        const to = toCanvas(state.pointerPos);
+        ctx.save();
+        ctx.strokeStyle = '#fcd34d';
+        ctx.globalAlpha = 0.7;
+        ctx.setLineDash([lineWidth * 1.1, lineWidth * 0.9]);
+        ctx.lineWidth = lineWidth;
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+        ctx.stroke();
+        ctx.restore();
+        ctx.setLineDash([]);
+      }
+
+      function drawNodes(radius) {
+        state.stage.nodes.forEach((node, index) => {
+          const pos = toCanvas(node);
+          ctx.save();
+          const isSelectedStart = state.started && index === state.startNodeIndex;
+          ctx.beginPath();
+          ctx.fillStyle = isSelectedStart ? 'rgba(56, 189, 248, 0.22)' : 'rgba(15, 23, 42, 0.32)';
+          ctx.shadowColor = isSelectedStart ? 'rgba(56, 189, 248, 0.8)' : 'rgba(148, 163, 184, 0.55)';
+          ctx.shadowBlur = radius * (isSelectedStart ? 1.6 : 0.9);
+          ctx.arc(pos.x, pos.y, radius * 0.95, 0, TAU);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.font = `${radius * 1.85}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(isSelectedStart ? '🎄' : '🎁', pos.x, pos.y + radius * 0.05);
+          ctx.restore();
+        });
+      }
+
+      function drawSanta(radius) {
+        if (!state.started || state.startNodeIndex === null) {
+          return;
+        }
+        const pos = toCanvas(state.santaPos);
+        ctx.save();
+        ctx.shadowColor = 'rgba(239, 68, 68, 0.75)';
+        ctx.shadowBlur = radius * 1.6;
+        ctx.font = `${radius * 2.2}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🎅', pos.x, pos.y + radius * 0.08);
+        ctx.restore();
+      }
+
+      function drawClearText() {
+        clearBanner.classList.add('visible');
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+        ctx.save();
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.45)';
+        const padding = Math.min(width, height) * 0.08;
+        const bannerWidth = width - padding * 2;
+        const bannerHeight = Math.min(90, Math.min(width, height) * 0.18);
+        drawRoundedRect(
+          ctx,
+          (width - bannerWidth) / 2,
+          height * 0.4,
+          bannerWidth,
+          bannerHeight,
+          bannerHeight / 2
+        );
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawSnowflakes() {
+        if (!snowflakes.length) {
+          return;
+        }
+        ctx.save();
+        ctx.fillStyle = '#f8fafc';
+        snowflakes.forEach((flake) => {
+          ctx.globalAlpha = flake.alpha;
+          ctx.beginPath();
+          ctx.arc(flake.x, flake.y, flake.radius, 0, TAU);
+          ctx.fill();
+        });
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
+
+      function drawParticles() {
+        if (!particles.length) {
+          return;
+        }
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        particles.forEach((particle) => {
+          const lifeRatio = particle.life / particle.duration;
+          const alpha = Math.max(0, 1 - lifeRatio);
+          ctx.globalAlpha = alpha * (particle.opacity ?? 1);
+          ctx.fillStyle = particle.color;
+
+          if (particle.type === 'sparkle') {
+            drawStarShape(ctx, particle.x, particle.y, 5, particle.size, particle.size * 0.45, particle.life * 8);
+          } else {
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, particle.size, 0, TAU);
+            ctx.fill();
+          }
+        });
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
+
+      function updateSnowflakes(delta) {
+        if (!snowflakes.length) {
+          return;
+        }
+        const width = canvas.clientWidth || 1;
+        const height = canvas.clientHeight || 1;
+        snowflakes.forEach((flake) => {
+          flake.y += flake.speed * delta;
+          flake.x += Math.sin((flake.y + flake.offset) * 0.015) * flake.drift * delta;
+          if (flake.y > height + flake.radius) {
+            flake.y = -flake.radius;
+            flake.x = Math.random() * width;
+          }
+          if (flake.x < -flake.radius) {
+            flake.x = width + flake.radius;
+          } else if (flake.x > width + flake.radius) {
+            flake.x = -flake.radius;
+          }
+        });
+      }
+
+      function updateParticles(delta) {
+        for (let index = particles.length - 1; index >= 0; index -= 1) {
+          const particle = particles[index];
+          particle.life += delta;
+          particle.x += particle.vx * delta;
+          particle.y += particle.vy * delta;
+          if (particle.gravity) {
+            particle.vy += particle.gravity * delta;
+          }
+          if (particle.life >= particle.duration) {
+            particles.splice(index, 1);
+          }
+        }
+      }
+
+      function drawStarShape(context, x, y, spikes, outerRadius, innerRadius, rotation = 0) {
+        context.save();
+        context.translate(x, y);
+        context.rotate(rotation);
+        context.beginPath();
+        const totalPoints = spikes * 2;
+        for (let point = 0; point < totalPoints; point += 1) {
+          const radius = point % 2 === 0 ? outerRadius : innerRadius;
+          const angle = (point * Math.PI) / spikes;
+          const px = Math.cos(angle) * radius;
+          const py = Math.sin(angle) * radius;
+          if (point === 0) {
+            context.moveTo(px, py);
+          } else {
+            context.lineTo(px, py);
+          }
+        }
+        context.closePath();
+        context.fill();
+        context.restore();
+      }
+
+      function initSnowflakes() {
+        const width = canvas.clientWidth || 1;
+        const height = canvas.clientHeight || 1;
+        snowflakes.length = 0;
+        for (let index = 0; index < SNOW_COUNT; index += 1) {
+          snowflakes.push({
+            x: Math.random() * width,
+            y: Math.random() * height,
+            radius: 0.6 + Math.random() * 2.1,
+            speed: 18 + Math.random() * 36,
+            drift: 20 + Math.random() * 26,
+            alpha: 0.25 + Math.random() * 0.45,
+            offset: Math.random() * TAU
+          });
+        }
+      }
+
+      function spawnSparkleBurst(from, to) {
+        const count = 18;
+        for (let index = 0; index < count; index += 1) {
+          const progress = Math.random();
+          const x = from.x + (to.x - from.x) * progress;
+          const y = from.y + (to.y - from.y) * progress;
+          const angle = Math.random() * TAU;
+          const speed = 60 + Math.random() * 140;
+          particles.push({
+            type: 'sparkle',
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 40,
+            life: 0,
+            duration: 0.5 + Math.random() * 0.35,
+            size: 2.4 + Math.random() * 3.2,
+            color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
+            opacity: 0.9,
+            gravity: 90
+          });
+        }
+      }
+
+      function spawnFireworkBurst(x, y, baseColor) {
+        const count = 42;
+        const paletteColor = baseColor ?? FIREWORK_COLORS[Math.floor(Math.random() * FIREWORK_COLORS.length)];
+        for (let index = 0; index < count; index += 1) {
+          const angle = (TAU * index) / count + Math.random() * 0.25;
+          const speed = 130 + Math.random() * 160;
+          particles.push({
+            type: 'firework',
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 0,
+            duration: 1.2 + Math.random() * 0.5,
+            size: 2.5 + Math.random() * 2.5,
+            color: paletteColor,
+            opacity: 1,
+            gravity: 60
+          });
+        }
+      }
+
+      function triggerFireworks() {
+        const width = canvas.clientWidth || 1;
+        const height = canvas.clientHeight || 1;
+        const bursts = [
+          { x: width * 0.5, y: height * 0.3 },
+          { x: width * 0.22, y: height * 0.42 },
+          { x: width * 0.78, y: height * 0.45 }
+        ];
+        bursts.forEach((burst, index) => {
+          spawnFireworkBurst(burst.x, burst.y, FIREWORK_COLORS[index % FIREWORK_COLORS.length]);
+        });
+      }
+
+      function beginRun(startIndex) {
+        state.visitedEdges.clear();
+        state.completed = false;
+        state.started = true;
+        state.startNodeIndex = startIndex;
+        state.currentNode = startIndex;
+        const node = state.stage.nodes[startIndex];
+        state.santaPos = { x: node.x, y: node.y };
+        state.pointerPos = { x: node.x, y: node.y };
+        nextButton.classList.add('hidden');
+        nextButton.disabled = true;
+        nextButton.textContent = 'Next Level';
+        clearBanner.classList.remove('visible');
+      }
+
+      function handlePointerDown(event) {
+        const pos = getEventPosition(event);
+        const nodeIndex = findNodeAtPoint(pos.x, pos.y);
+        if (nodeIndex === -1) {
+          return;
+        }
+
+        event.preventDefault();
+        if (!state.started) {
+          beginRun(nodeIndex);
+        } else if (state.completed) {
+          return;
+        } else if (nodeIndex !== state.currentNode) {
+          return;
+        }
+
+        state.pointerActive = true;
+        state.pointerId = event.pointerId;
+        const node = state.stage.nodes[state.currentNode];
+        state.pointerPos = { x: node.x, y: node.y };
+        clearBanner.classList.remove('visible');
+        try {
+          canvas.setPointerCapture(event.pointerId);
+        } catch (error) {
+          /* Pointer capture might fail on some browsers; safe to ignore. */
+        }
+        updateStatus();
+      }
+
+      function handlePointerMove(event) {
+        if (!state.pointerActive || event.pointerId !== state.pointerId) {
+          return;
+        }
+
+        event.preventDefault();
+        const pos = getEventPosition(event);
+        state.pointerPos = toNormalized(pos.x, pos.y);
+        const nodeIndex = findNodeAtPoint(pos.x, pos.y);
+        if (nodeIndex !== -1) {
+          attemptTraverse(nodeIndex);
+        }
+      }
+
+      function handlePointerUp(event) {
+        if (event.pointerId !== state.pointerId && state.pointerActive) {
+          return;
+        }
+
+        if (event.pointerId === state.pointerId) {
+          try {
+            canvas.releasePointerCapture(event.pointerId);
+          } catch (error) {
+            /* Release failures are non-fatal. */
+          }
+        }
+
+        if (!state.pointerActive) {
+          return;
+        }
+
+        event.preventDefault();
+        state.pointerActive = false;
+        state.pointerId = null;
+
+        if (!state.completed) {
+          resetProgress();
+        }
+      }
+
+      function attemptTraverse(targetIndex) {
+        if (!state.started || state.currentNode === null) {
+          return;
+        }
+
+        if (state.completed) {
+          return;
+        }
+
+        const current = state.currentNode;
+        if (targetIndex === current) {
+          return;
+        }
+
+        if (!state.adjacency[current].has(targetIndex)) {
+          return;
+        }
+
+        const key = edgeKey(current, targetIndex);
+        if (state.visitedEdges.has(key)) {
+          return;
+        }
+
+        const fromPos = toCanvas(state.stage.nodes[current]);
+        const toPos = toCanvas(state.stage.nodes[targetIndex]);
+        spawnSparkleBurst(fromPos, toPos);
+
+        state.visitedEdges.add(key);
+        state.currentNode = targetIndex;
+        const node = state.stage.nodes[targetIndex];
+        state.santaPos = { x: node.x, y: node.y };
+        state.pointerPos = { x: node.x, y: node.y };
+
+        if (state.visitedEdges.size === state.stage.edges.length) {
+          if (state.pointerId !== null) {
+            try {
+              canvas.releasePointerCapture(state.pointerId);
+            } catch (error) {
+              /* Safe to ignore pointer release errors. */
+            }
+          }
+          state.completed = true;
+          state.pointerActive = false;
+          state.pointerId = null;
+          clearBanner.classList.add('visible');
+          showNextButton();
+          triggerFireworks();
+        }
+
+        updateStatus();
+      }
+
+      function resetProgress() {
+        state.visitedEdges.clear();
+        state.completed = false;
+        state.started = false;
+        state.startNodeIndex = null;
+        state.currentNode = null;
+        state.pointerActive = false;
+        state.pointerId = null;
+        state.santaPos = { x: 0.5, y: 0.5 };
+        state.pointerPos = { x: 0.5, y: 0.5 };
+        clearBanner.classList.remove('visible');
+        nextButton.classList.add('hidden');
+        nextButton.disabled = true;
+        nextButton.textContent = 'Next Level';
+        particles.length = 0;
+        updateStatus();
+      }
+
+      function updateStatus() {
+        levelInfoEl.textContent = `Level ${state.stageIndex + 1} / ${totalStages}`;
+        stageNameEl.textContent = state.stage.name;
+        if (state.completed) {
+          progressEl.textContent = 'CLEAR!';
+        } else if (!state.started) {
+          progressEl.textContent = '家をタップしてスタート';
+        } else {
+          progressEl.textContent = `道: ${state.visitedEdges.size} / ${state.stage.edges.length}`;
+        }
+      }
+
+      function getEventPosition(event) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top
+        };
+      }
+
+      function findNodeAtPoint(x, y) {
+        const radius = getNodeRadius() * 1.4;
+        for (let index = 0; index < state.stage.nodes.length; index += 1) {
+          const node = state.stage.nodes[index];
+          const pos = toCanvas(node);
+          const distance = Math.hypot(pos.x - x, pos.y - y);
+          if (distance <= radius) {
+            return index;
+          }
+        }
+        return -1;
+      }
+
+      function toCanvas(node) {
+        const width = canvas.clientWidth || 1;
+        const height = canvas.clientHeight || 1;
+        return {
+          x: node.x * width,
+          y: node.y * height
+        };
+      }
+
+      function toNormalized(x, y) {
+        const width = canvas.clientWidth || 1;
+        const height = canvas.clientHeight || 1;
+        return {
+          x: clamp01(x / width),
+          y: clamp01(y / height)
+        };
+      }
+
+      function getNodeRadius() {
+        const size = Math.min(canvas.clientWidth, canvas.clientHeight) || 1;
+        return Math.max(18, size * 0.06);
+      }
+
+      function getEdgeWidth() {
+        const size = Math.min(canvas.clientWidth, canvas.clientHeight) || 1;
+        return Math.max(6, size * 0.045);
+      }
+
+      function edgeKey(a, b) {
+        return a < b ? `${a}-${b}` : `${b}-${a}`;
+      }
+
+      function clamp01(value) {
+        if (value < 0) {
+          return 0;
+        }
+        if (value > 1) {
+          return 1;
+        }
+        return value;
+      }
+
+      function showNextButton() {
+        const isLastLevel = state.stageIndex >= totalStages - 1;
+        nextButton.textContent = isLastLevel ? 'Restart' : 'Next Level';
+        nextButton.disabled = false;
+        nextButton.classList.remove('hidden');
+      }
+
+      function handleNextLevel() {
+        if (!state.completed) {
+          return;
+        }
+        const nextIndex = state.stageIndex >= totalStages - 1
+          ? 0
+          : state.stageIndex + 1;
+        setupStage(nextIndex);
+      }
+
+      function drawRoundedRect(context, x, y, width, height, radius) {
+        const safeRadius = Math.min(radius, width / 2, height / 2);
+        if (typeof context.roundRect === 'function') {
+          context.beginPath();
+          context.roundRect(x, y, width, height, safeRadius);
+          return;
+        }
+
+        context.beginPath();
+        context.moveTo(x + safeRadius, y);
+        context.lineTo(x + width - safeRadius, y);
+        context.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+        context.lineTo(x + width, y + height - safeRadius);
+        context.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+        context.lineTo(x + safeRadius, y + height);
+        context.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+        context.lineTo(x, y + safeRadius);
+        context.quadraticCurveTo(x, y, x + safeRadius, y);
+      }
+    });
+  </script>
+</body>
+</html>
